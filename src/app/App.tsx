@@ -152,12 +152,17 @@ const decryptChunk = async (cipher: ArrayBuffer, key: AesKey, ivHex: string): Pr
   aesGcmDecrypt(cipher, key, new Uint8Array(hexToBuf(ivHex)));
 
 // ─── Toggle Component ──────────────────────────────────────────────────────────
-const Toggle = ({ val, onChange }: { val: boolean; onChange: () => void }) => (
+const Toggle = ({ val, onChange, label }: { val: boolean; onChange: () => void; label?: string }) => (
   <button
+    type="button"
+    role="switch"
+    aria-checked={val}
+    aria-label={label}
     onClick={onChange}
-    className={`relative w-11 h-6 rounded-full transition-all duration-200 focus:outline-none ${val ? 'bg-indigo-600' : 'bg-[#2a2d3e]'}`}
+    className="toggle-track"
+    data-on={String(val)}
   >
-    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-all duration-200 ${val ? 'left-[22px]' : 'left-0.5'}`} />
+    <span className="toggle-thumb" />
   </button>
 );
 
@@ -1541,61 +1546,60 @@ export default function App() {
   // ─── AUTH ─────────────────────────────────────────────────────────────────
   if (!isLoggedIn) {
     return (
-      <div className="min-h-dvh bg-[#0d0e17] flex items-center justify-center p-4">
-        <div className="w-full max-w-sm">
-          <div className="text-center mb-8">
-            <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-700 items-center justify-center mb-4 shadow-2xl shadow-indigo-600/40">
-              <Shield className="w-8 h-8 text-white" />
+      <div style={{minHeight:'100dvh',background:'var(--c-bg)',display:'flex',alignItems:'center',justifyContent:'center',padding:'var(--sp-4)'}}>
+        <div style={{width:'100%',maxWidth:'360px'}}>
+          <div style={{textAlign:'center',marginBottom:'var(--sp-8)'}}>
+            <div style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:'44px',height:'44px',borderRadius:'var(--r-lg)',background:'var(--c-accent-x)',border:'1px solid var(--c-accent-b)',marginBottom:'var(--sp-4)'}}>
+              <Shield size={22} color="var(--c-accent)" />
             </div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">Aegix Share</h1>
-            <p className="text-sm text-slate-500 mt-1">Zero-knowledge encrypted file sharing</p>
+            <h1 style={{fontSize:'var(--ts-xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em',marginBottom:'4px'}}>AEGIX SHARE</h1>
+            <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',letterSpacing:'0.04em'}}>Zero-knowledge encrypted file sharing</p>
           </div>
-
-          <div className="bg-[#13161f] border border-[#1e2133] rounded-2xl p-6 shadow-2xl">
-            <div className="flex rounded-xl bg-[#0d0e17] p-1 mb-6 gap-1">
+          <div className="card" style={{padding:'var(--sp-6)'}}>
+            <div style={{display:'flex',background:'var(--c-bg)',border:'1px solid var(--c-b1)',borderRadius:'var(--r-lg)',padding:'3px',marginBottom:'var(--sp-6)',gap:'3px'}}>
               {(['login', 'register'] as AuthPage[]).map(p => (
                 <button key={p} onClick={() => setAuthPage(p)}
-                  className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition-all ${authPage === p ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>
-                  {p === 'login' ? 'Sign In' : 'Register'}
+                  style={{flex:1,padding:'8px 12px',borderRadius:'var(--r-md)',fontSize:'var(--ts-xs)',fontWeight:600,cursor:'pointer',
+                    border:authPage===p?'1px solid var(--c-accent-b)':'1px solid transparent',
+                    background:authPage===p?'var(--c-accent-x)':'transparent',
+                    color:authPage===p?'var(--c-accent)':'var(--c-t3)',
+                    transition:'all 0.15s ease',fontFamily:'inherit'}}>
+                  {p === 'login' ? 'Sign In' : 'Create Account'}
                 </button>
               ))}
             </div>
-
-            <div className="flex flex-col gap-3">
+            <div style={{display:'flex',flexDirection:'column',gap:'var(--sp-3)'}}>
               {authPage === 'register' && (
-                <input value={authName} onChange={e => setAuthName(e.target.value)} placeholder="Full name"
-                  className="w-full bg-[#0d0e17] border border-[#1e2133] rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-600" />
+                <input className="input" value={authName} onChange={e => setAuthName(e.target.value)} placeholder="Full name" />
               )}
-              <input value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email address" type="email"
-                className="w-full bg-[#0d0e17] border border-[#1e2133] rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-600" />
-              <div className="relative">
-                <input value={authPwd} onChange={e => setAuthPwd(e.target.value)} placeholder="Password" type={showPwd ? 'text' : 'password'}
-                  className="w-full bg-[#0d0e17] border border-[#1e2133] rounded-xl px-4 py-3 pr-11 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-600" />
-                <button onClick={() => setShowPwd(p => !p)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
-                  {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              <input className="input" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email address" type="email" />
+              <div style={{position:'relative'}}>
+                <input className="input" value={authPwd} onChange={e => setAuthPwd(e.target.value)} placeholder="Password" type={showPwd ? 'text' : 'password'} style={{paddingRight:'44px'}} />
+                <button onClick={() => setShowPwd(p => !p)} className="btn-ghost" style={{position:'absolute',right:'8px',top:'50%',transform:'translateY(-50%)',padding:'4px'}}>
+                  {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
-              <button
+              <button className="btn-primary" style={{width:'100%',padding:'11px',marginTop:'var(--sp-2)'}}
                 onClick={() => {
                   if (authPage === 'register' && authName) setProfileName(authName);
                   if (authEmail) setProfileEmail(authEmail);
                   setIsGuest(false); setIsLoggedIn(true);
                   toast(`Welcome${authPage === 'register' ? `, ${authName || 'User'}` : ' back'}!`, 'ok');
-                }}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-sm shadow-lg hover:from-indigo-500 hover:to-purple-500 transition-all">
+                }}>
                 {authPage === 'login' ? 'Sign In' : 'Create Account'}
               </button>
-
-              <div className="flex items-center gap-3"><div className="flex-1 h-px bg-[#1e2133]" /><span className="text-[10px] text-slate-600 uppercase tracking-widest">or</span><div className="flex-1 h-px bg-[#1e2133]" /></div>
-
-              <button
-                onClick={() => { setIsGuest(true); setIsLoggedIn(true); setProfileName('Guest'); setProfileEmail(''); toast('Continuing as guest.', 'info'); }}
-                className="w-full py-3 rounded-xl border border-[#1e2133] hover:border-slate-600 hover:bg-[#1a1d2e] text-slate-400 hover:text-slate-200 font-bold text-sm transition-all flex items-center justify-center gap-2">
-                <User className="w-4 h-4" /> Continue as Guest
+              <div style={{display:'flex',alignItems:'center',gap:'var(--sp-3)'}}>
+                <div className="divider" style={{flex:1}} />
+                <span style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',letterSpacing:'0.08em',textTransform:'uppercase'}}>or</span>
+                <div className="divider" style={{flex:1}} />
+              </div>
+              <button className="btn-secondary" style={{width:'100%',padding:'11px'}}
+                onClick={() => { setIsGuest(true); setIsLoggedIn(true); setProfileName('Guest'); setProfileEmail(''); toast('Continuing as guest.', 'info'); }}>
+                <User size={15} /> Continue as Guest
               </button>
             </div>
           </div>
-          <p className="text-center text-[10px] text-slate-600 mt-4">No account needed to receive files · End-to-end encrypted</p>
+          <p style={{textAlign:'center',fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'var(--sp-4)'}}>No account required to receive · End-to-end encrypted</p>
         </div>
         <ToastStack toasts={toasts} />
       </div>
@@ -1796,47 +1800,50 @@ export default function App() {
 
   // ─── MAIN APP ─────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-dvh bg-[#0d0e17] flex">
-      {/* Sidebar */}
-      <aside className="hidden md:flex flex-col w-16 border-r border-[#1e2133] py-4 gap-1 items-center shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center mb-4 shadow-lg shadow-indigo-600/30">
-          <Shield className="w-5 h-5 text-white" />
+    <div style={{minHeight:'100dvh',background:'var(--c-bg)',display:'flex'}}>
+      {/* Sidebar — desktop */}
+      <aside className="hidden md:flex" style={{flexDirection:'column',width:'60px',borderRight:'1px solid var(--c-b1)',paddingTop:'var(--sp-4)',paddingBottom:'var(--sp-4)',gap:'2px',alignItems:'center',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'center',width:'34px',height:'34px',borderRadius:'var(--r-lg)',background:'var(--c-accent-x)',border:'1px solid var(--c-accent-b)',marginBottom:'var(--sp-6)'}}>
+          <Shield size={17} color="var(--c-accent)" />
         </div>
         {NAV.map(n => (
           <button key={n.id} onClick={() => setTab(n.id)} title={n.label}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${tab === n.id ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-600 hover:text-slate-400 hover:bg-[#1a1d2e]'}`}>
+            className="nav-item" data-active={String(tab === n.id)}
+            style={{width:'40px',height:'40px',flexShrink:0}}>
             {n.icon}
           </button>
         ))}
       </aside>
 
       {/* Main */}
-      <main id="aegix-app-root" className="flex-1 flex flex-col max-h-dvh overflow-hidden">
+      <main id="aegix-app-root" style={{flex:1,display:'flex',flexDirection:'column',maxHeight:'100dvh',overflow:'hidden'}}>
         {/* Mobile header */}
-        <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-[#1e2133]">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center"><Shield className="w-4 h-4 text-white" /></div>
-            <span className="font-extrabold text-white text-sm">Aegix Share</span>
+        <header className="md:hidden" style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',borderBottom:'1px solid var(--c-b1)'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'var(--sp-2)'}}>
+            <div style={{width:'28px',height:'28px',borderRadius:'var(--r-md)',background:'var(--c-accent-x)',border:'1px solid var(--c-accent-b)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <Shield size={14} color="var(--c-accent)" />
+            </div>
+            <span className="wordmark">AEGIX <span>SHARE</span></span>
           </div>
-          <span className="text-xs text-slate-500">{NAV.find(n => n.id === tab)?.label}</span>
+          <span style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)'}}>{NAV.find(n => n.id === tab)?.label}</span>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-4 py-6 flex flex-col gap-6">
+        <div style={{flex:1,overflowY:'auto'}}>
+          <div style={{maxWidth:'672px',margin:'0 auto',padding:'var(--sp-6) var(--sp-4)',display:'flex',flexDirection:'column',gap:'var(--sp-6)'}}>
 
             {/* ── SEND & RECEIVE TAB ── */}
             {tab === 'send' && (
-              <div className="flex flex-col gap-5">
+              <div style={{display:'flex',flexDirection:'column',gap:'var(--sp-6)'}}>
                 <div>
-                  <h1 className="text-2xl font-extrabold text-white tracking-tight">Send & Receive</h1>
-                  <p className="text-xs text-slate-500 mt-1">Zero-knowledge end-to-end encryption — servers never see your data</p>
+                  <h1 style={{fontSize:'var(--ts-2xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em'}}>Send &amp; Receive</h1>
+                  <p style={{fontSize:'var(--ts-sm)',color:'var(--c-t3)',marginTop:'var(--sp-1)'}}>Zero-knowledge end-to-end encryption — servers never see your data</p>
                 </div>
 
                 {/* Sub-tabs */}
-                <div className="flex border-b border-[#1e2133]">
-                  {([['send', 'Send files'], ['receive', 'Receive files']] as [SendSubTab, string][]).map(([id, label]) => (
+                <div style={{display:'flex',borderBottom:'1px solid var(--c-b1)',gap:'var(--sp-6)'}}>
+                  {([['send', 'Send'], ['receive', 'Receive']] as [SendSubTab, string][]).map(([id, label]) => (
                     <button key={id} onClick={() => setSendSubTab(id)}
-                      className={`pb-3 mr-6 text-sm font-bold transition-all border-b-2 -mb-px ${sendSubTab === id ? 'text-indigo-400 border-indigo-500' : 'text-slate-500 border-transparent hover:text-slate-300'}`}>
+                      className="tab-btn" data-active={String(sendSubTab === id)}>
                       {label}
                     </button>
                   ))}
@@ -1844,95 +1851,95 @@ export default function App() {
 
                 {/* ── SEND SUB-TAB ── */}
                 {sendSubTab === 'send' && (
-                  <div className="flex flex-col gap-5">
+                  <div style={{display:'flex',flexDirection:'column',gap:'var(--sp-5)'}}>
                     <div>
-                      <h2 className="text-xs font-bold text-slate-400 mb-3">Select files</h2>
+                      <p className="section-label" style={{marginBottom:'var(--sp-3)'}}>Select files</p>
                       <div
                         onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                         onDragLeave={() => setIsDragging(false)}
                         onDrop={e => { e.preventDefault(); setIsDragging(false); setUploadQueue(Array.from(e.dataTransfer.files)); }}
                         onClick={() => document.getElementById('file-input')?.click()}
-                        className={`border-2 border-dashed rounded-2xl py-14 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all ${isDragging ? 'border-indigo-500 bg-indigo-500/5' : 'border-[#1e2133] hover:border-indigo-500/40 hover:bg-[#1a1d2e]/30'}`}>
+                        className="drop-zone" data-active={String(isDragging)}
+                        style={{padding:'var(--sp-12) var(--sp-4)'}}
+                      >
                         <input type="file" id="file-input" className="hidden" onChange={e => setUploadQueue(Array.from(e.target.files || []))} />
-                        <div className="w-14 h-14 rounded-full bg-[#1a1d2e] border border-[#1e2133] flex items-center justify-center text-slate-500">
-                          <Upload className="w-6 h-6" />
+                        <div style={{width:'48px',height:'48px',borderRadius:'var(--r-xl)',background:'var(--c-s2)',border:'1px solid var(--c-b1)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--c-t3)'}}>
+                          <Upload size={22} />
                         </div>
-                        <div className="text-center">
-                          <p className="font-bold text-slate-200 text-sm">Drag & drop files here</p>
-                          <p className="text-[11px] text-slate-500 mt-1">Any file type · No size limit · AES-256 encrypted</p>
+                        <div style={{textAlign:'center'}}>
+                          <p style={{fontWeight:600,color:'var(--c-t1)',fontSize:'var(--ts-base)'}}>Drop files here</p>
+                          <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'4px'}}>Any file type · No size limit · AES-256 encrypted</p>
                         </div>
-                        <button className="px-5 py-2 rounded-xl bg-[#1a1d2e] hover:bg-[#20243a] text-indigo-400 border border-indigo-500/20 text-xs font-bold transition-all">+ Browse files</button>
+                        <button className="btn-secondary" style={{fontSize:'var(--ts-xs)'}}>Browse files</button>
                       </div>
                     </div>
 
                     {uploadQueue.length > 0 && (
-                      <div className="flex items-center justify-between p-3.5 rounded-xl bg-[#1a1d2e] border border-[#1e2133]">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <File className="w-4 h-4 text-indigo-400 shrink-0" />
-                          <div className="min-w-0"><p className="text-xs font-bold text-slate-200 truncate">{uploadQueue[0].name}</p><p className="text-[10px] text-slate-500">{fmtBytes(uploadQueue[0].size)}</p></div>
+                      <div className="card" style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'var(--sp-3) var(--sp-4)'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:'var(--sp-3)',minWidth:0}}>
+                          <File size={16} color="var(--c-accent)" style={{flexShrink:0}} />
+                          <div style={{minWidth:0}}>
+                            <p style={{fontSize:'var(--ts-sm)',fontWeight:600,color:'var(--c-t1)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{uploadQueue[0].name}</p>
+                            <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)'}}>{fmtBytes(uploadQueue[0].size)}</p>
+                          </div>
                         </div>
-                        <button onClick={() => setUploadQueue([])} className="text-slate-600 hover:text-red-400 transition-colors shrink-0 ml-2"><X className="w-4 h-4" /></button>
+                        <button onClick={() => setUploadQueue([])} className="btn-ghost" style={{padding:'4px',color:'var(--c-err)',flexShrink:0,marginLeft:'var(--sp-2)'}}><X size={15} /></button>
                       </div>
                     )}
 
                     {/* Security settings */}
-                    <div className="bg-[#13161f] border border-[#1e2133] rounded-2xl p-5 flex flex-col gap-4">
+                    <div className="card" style={{padding:'var(--sp-5)',display:'flex',flexDirection:'column',gap:'var(--sp-4)'}}>
                       <div className="flex items-center gap-2">
-                        <Lock className="w-3.5 h-3.5 text-indigo-400" />
-                        <h2 className="text-xs font-bold text-slate-300 uppercase tracking-widest">Security settings</h2>
+                        <Lock size={14} color="var(--c-accent)" />
+                        <p className="section-label">Security Settings</p>
                       </div>
 
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Link expires in</label>
+                        <label className="section-label">Link expires in</label>
                         <select value={linkExpiry} onChange={e => setLinkExpiry(Number(e.target.value))}
                           className="bg-[#0d0e17] border border-[#1e2133] rounded-xl text-xs px-3.5 py-3 text-slate-200 focus:outline-none focus:border-indigo-500">
                           {EXPIRY_OPTIONS.map(o => <option key={o.label} value={o.value}>{o.label}</option>)}
                         </select>
                       </div>
 
-                      <div className="flex items-center justify-between">
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                         <div>
-                          <p className="text-sm font-bold text-slate-300">Self-destruct after download</p>
-                          <p className="text-[10px] text-slate-500 mt-0.5">Link becomes permanently invalid after the first download</p>
+                          <p style={{fontSize:'var(--ts-sm)',fontWeight:500,color:'var(--c-t1)'}}>Self-destruct after download</p>
+                          <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'2px'}}>Link becomes permanently invalid after first download</p>
                         </div>
                         <Toggle val={selfDestruct} onChange={() => setSelfDestruct(p => !p)} />
                       </div>
 
                       <div className="flex flex-col gap-1.5">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Download limit</label>
+                        <label className="section-label">Download limit</label>
                         <select value={downloadLimit} onChange={e => setDownloadLimit(Number(e.target.value))}
                           className="bg-[#0d0e17] border border-[#1e2133] rounded-xl text-xs px-3.5 py-3 text-slate-200 focus:outline-none focus:border-indigo-500">
                           {DOWNLOAD_LIMIT_OPTIONS.map(o => <option key={o.label} value={o.value}>{o.label}</option>)}
                         </select>
                       </div>
 
-                      <div className="flex items-center justify-between">
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                         <div>
-                          <p className="text-sm font-bold text-slate-300">Require password</p>
-                          <p className="text-[10px] text-slate-500 mt-0.5">Recipients must enter a password to access files</p>
+                          <p style={{fontSize:'var(--ts-sm)',fontWeight:500,color:'var(--c-t1)'}}>Require password</p>
+                          <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'2px'}}>Recipients must enter a password to access files</p>
                         </div>
                         <Toggle val={requirePassword} onChange={() => { setRequirePassword(p => !p); if (requirePassword) setPassword(''); }} />
                       </div>
 
                       {requirePassword && (
-                        <div className="relative">
-                          <input type={showSendPwd ? 'text' : 'password'} placeholder="Set access password" value={password} onChange={e => setPassword(e.target.value)}
-                            className="w-full bg-[#0d0e17] border border-[#1e2133] rounded-xl text-xs px-3.5 py-3 pr-10 text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-600" />
-                          <button onClick={() => setShowSendPwd(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
-                            {showSendPwd ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        <div style={{position:'relative'}}>
+                          <input className="input" type={showSendPwd ? 'text' : 'password'} placeholder="Set access password" value={password} onChange={e => setPassword(e.target.value)} style={{paddingRight:'44px'}} />
+                          <button onClick={() => setShowSendPwd(p => !p)} className="btn-ghost" style={{position:'absolute',right:'8px',top:'50%',transform:'translateY(-50%)',padding:'4px'}}>
+                            {showSendPwd ? <EyeOff size={14} /> : <Eye size={14} />}
                           </button>
                         </div>
                       )}
                     </div>
 
-                    <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => { setUploadQueue([]); setPassword(''); setRequirePassword(false); }}
-                        className="px-5 py-3 rounded-xl border border-[#1e2133] hover:bg-[#1a1d2e] text-slate-400 hover:text-white text-xs font-bold transition-all">
-                        Clear all
-                      </button>
-                      <button onClick={startUpload} disabled={!uploadQueue.length || isUploading}
-                        className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg hover:from-indigo-500 hover:to-purple-500 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-                        <Shield className="w-4 h-4" /> {isUploading ? 'Encrypting…' : 'Encrypt & generate link'} <ArrowRight className="w-4 h-4" />
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:'var(--sp-3)'}}>
+                      <button className="btn-secondary" style={{padding:'10px 20px'}} onClick={() => { setUploadQueue([]); setPassword(''); setRequirePassword(false); }}>Clear</button>
+                      <button className="btn-primary" style={{padding:'10px 24px'}} onClick={startUpload} disabled={!uploadQueue.length || isUploading}>
+                        <Shield size={15} /> {isUploading ? 'Encrypting…' : 'Encrypt & Share'} <ArrowRight size={15} />
                       </button>
                     </div>
 
@@ -1940,8 +1947,8 @@ export default function App() {
                     {transfers.filter(t => t.status === 'uploading').map(t => (
                       <div key={t.id} className="p-4 rounded-2xl bg-[#13161f] border border-[#1e2133] flex flex-col gap-2">
                         <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" /><span className="font-bold text-slate-200 truncate max-w-xs">{t.name}</span></div>
-                          <span className="text-indigo-400 font-bold shrink-0">{t.uploadedChunks}/{t.totalChunks}</span>
+                          <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-[var(--c-accent)] animate-pulse" /><span className="font-bold text-slate-200 truncate max-w-xs">{t.name}</span></div>
+                          <span className="font-bold shrink-0" style={{color:"var(--c-accent)"}}>{t.uploadedChunks}/{t.totalChunks}</span>
                         </div>
                         <div className="h-1.5 bg-[#0d0e17] rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all" style={{ width: `${Math.round((t.uploadedChunks / t.totalChunks) * 100)}%` }} /></div>
                       </div>
@@ -2002,7 +2009,7 @@ export default function App() {
                         onKeyDown={e => e.key === 'Enter' && handleReceiveLink()}
                         className="w-full bg-[#1a1d2e] border border-[#1e2133] rounded-xl px-4 py-3.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-600 mb-3" />
                       <button onClick={handleReceiveLink}
-                        className="w-full py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-sm flex items-center justify-center gap-2 hover:from-indigo-500 hover:to-purple-500 transition-all">
+                        className="btn-primary">
                         <Download className="w-4 h-4" /> Decrypt & download
                       </button>
                     </div>
@@ -2112,7 +2119,7 @@ export default function App() {
                     {nearbyStatus === 'uploading' && (
                       <div className="p-4 rounded-2xl bg-[#13161f] border border-indigo-500/20 flex flex-col gap-2">
                         <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" /><span className="font-bold text-slate-200">Encrypting & uploading…</span></div>
+                          <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-[var(--c-accent)] animate-pulse" /><span className="font-bold text-slate-200">Encrypting & uploading…</span></div>
                           <span className="text-indigo-400 font-bold">{nearbyProgress}%</span>
                         </div>
                         <div className="h-1.5 bg-[#0d0e17] rounded-full overflow-hidden"><div className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all" style={{ width: `${nearbyProgress}%` }} /></div>
@@ -2562,7 +2569,7 @@ export default function App() {
             {tab === 'history' && (
               <div className="flex flex-col gap-5">
                 <div className="flex items-center justify-between">
-                  <div><h1 className="text-2xl font-extrabold text-white tracking-tight">Transfer History</h1><p className="text-xs text-slate-500 mt-1">{transfers.length} transfer{transfers.length !== 1 ? 's' : ''} this session</p></div>
+              <h1 style={{fontSize:'var(--ts-2xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em'}}>Transfer History</h1>
                   {transfers.length > 0 && <button onClick={() => setTransfers([])} className="text-xs text-red-400 hover:text-red-300 font-bold transition-all">Clear</button>}
                 </div>
                 {transfers.length === 0 ? (
@@ -2585,7 +2592,7 @@ export default function App() {
             {tab === 'library' && (
               <div className="flex flex-col gap-5">
                 <div className="flex items-center justify-between">
-                  <div><h1 className="text-2xl font-extrabold text-white tracking-tight">File Library</h1><p className="text-xs text-slate-500 mt-1">Server-side active transfers</p></div>
+              <h1 style={{fontSize:'var(--ts-2xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em'}}>File Library</h1>
                   <button onClick={fetchStats} className="p-2 rounded-xl bg-[#1a1d2e] border border-[#1e2133] text-slate-400 hover:text-white transition-all"><RefreshCw className="w-4 h-4" /></button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -2610,7 +2617,7 @@ export default function App() {
             {/* ==== SETTINGS TAB ==== */}
             {tab === 'settings' && (
               <div className="flex flex-col gap-5">
-                <h1 className="text-2xl font-extrabold text-white tracking-tight">Settings</h1>
+                <h1 style={{fontSize:'var(--ts-2xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em'}}>Settings</h1>
                 <p className="text-xs text-slate-500 -mt-3">All changes save automatically and persist across sessions.</p>
 
                 {/* A: Transfer Defaults */}
@@ -2837,7 +2844,7 @@ export default function App() {
             {/* ── PROFILE TAB ── */}
             {tab === 'profile' && (
               <div className="flex flex-col gap-5">
-                <h1 className="text-2xl font-extrabold text-white tracking-tight">Profile</h1>
+                <h1 style={{fontSize:'var(--ts-2xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em'}}>Profile</h1>
                 <div className="bg-[#13161f] border border-[#1e2133] rounded-2xl p-5 flex flex-col gap-4">
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center text-white text-xl font-extrabold">{profileName.charAt(0).toUpperCase()}</div>
@@ -2861,10 +2868,13 @@ export default function App() {
         </div>
 
         {/* Mobile bottom nav */}
-        <nav className="md:hidden flex border-t border-[#1e2133] bg-[#0d0e17]/95 backdrop-blur-sm">
+        <nav className="md:hidden" style={{display:'flex',borderTop:'1px solid var(--c-b1)',background:'var(--c-bg)'}}>
           {NAV.map(n => (
             <button key={n.id} onClick={() => setTab(n.id)}
-              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 text-[9px] font-bold transition-all ${tab === n.id ? 'text-indigo-400' : 'text-slate-600'}`}>
+              style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                padding:'10px 0',gap:'3px',fontSize:'var(--ts-xs)',fontWeight:600,
+                color:tab===n.id?'var(--c-accent)':'var(--c-t3)',
+                background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',transition:'color 0.15s ease'}}>
               {n.icon}{n.label.split(' ')[0]}
             </button>
           ))}
@@ -2876,19 +2886,17 @@ export default function App() {
 
       {/* ── QR DISPLAY MODAL (z-index 200 to be above everything) ── */}
       {showQR && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-6 z-[200]"
-          onClick={e => { if (e.target === e.currentTarget) setShowQR(false); }}>
-          <div className="bg-[#13161f] border border-[#1e2133] rounded-3xl p-6 max-w-sm w-full flex flex-col items-center gap-5 shadow-2xl">
-            <div className="flex items-center justify-between w-full">
-              <h3 className="font-bold text-slate-200 text-sm truncate max-w-xs">{qrTitle}</h3>
-              <button onClick={() => setShowQR(false)} className="text-slate-500 hover:text-white transition-all"><X className="w-4 h-4" /></button>
+        <div className="overlay" style={{zIndex:200}} onClick={e => { if (e.target === e.currentTarget) setShowQR(false); }}>
+          <div className="card animate-slide-up" style={{padding:'var(--sp-6)',maxWidth:'380px',width:'100%',display:'flex',flexDirection:'column',alignItems:'center',gap:'var(--sp-4)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',width:'100%'}}>
+              <h3 style={{fontWeight:600,color:'var(--c-t1)',fontSize:'var(--ts-base)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'280px'}}>{qrTitle}</h3>
+              <button onClick={() => setShowQR(false)} className="btn-ghost" style={{padding:'4px'}}><X size={16} /></button>
             </div>
-            <div className="p-4 bg-white rounded-2xl shadow-inner"><QRCodeSVG value={qrContent} size={200} /></div>
-            <div className="text-[10px] text-slate-400 bg-[#0d0e17] p-3 rounded-xl border border-[#1e2133] font-mono break-all text-center select-all w-full max-h-20 overflow-y-auto">{qrContent}</div>
-            <div className="flex gap-3 w-full">
-              <button onClick={() => { navigator.clipboard.writeText(qrContent); toast('Copied!', 'ok'); setShowQR(false); }}
-                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"><Copy className="w-3.5 h-3.5" /> Copy</button>
-              <button onClick={() => setShowQR(false)} className="flex-1 py-2.5 rounded-xl bg-[#1a1d2e] hover:bg-[#20243a] text-slate-300 font-bold text-xs transition-colors">Close</button>
+            <div className="qr-wrapper"><QRCodeSVG value={qrContent} size={200} /></div>
+            <div className="mono-data" style={{width:'100%',maxHeight:'72px',overflowY:'auto',textAlign:'center'}}>{qrContent}</div>
+            <div style={{display:'flex',gap:'var(--sp-3)',width:'100%'}}>
+              <button className="btn-primary" style={{flex:1,padding:'10px'}} onClick={() => { navigator.clipboard.writeText(qrContent); toast('Copied!', 'ok'); setShowQR(false); }}><Copy size={14} /> Copy</button>
+              <button className="btn-secondary" style={{flex:1,padding:'10px'}} onClick={() => setShowQR(false)}>Close</button>
             </div>
           </div>
         </div>
@@ -3021,12 +3029,15 @@ export default function App() {
 // ─── Toast Stack ───────────────────────────────────────────────────────────────
 function ToastStack({ toasts }: { toasts: Toast[] }) {
   return (
-    <div className="fixed top-4 right-4 flex flex-col gap-2 z-[300] pointer-events-none">
+    <div style={{position:'fixed',top:'var(--sp-4)',right:'var(--sp-4)',display:'flex',flexDirection:'column',gap:'var(--sp-2)',zIndex:300,pointerEvents:'none'}}>
       {toasts.map(t => (
-        <div key={t.id} className={`px-4 py-3 rounded-2xl text-xs font-bold shadow-xl backdrop-blur-sm border animate-slide-up pointer-events-auto
-          ${t.kind === 'ok'  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
-          : t.kind === 'err' ? 'bg-red-500/15 border-red-500/30 text-red-300'
-                             : 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300'}`}>
+        <div key={t.id}
+          className={`animate-slide-down pointer-events-auto ${
+            t.kind === 'ok'  ? 'toast toast-ok'
+          : t.kind === 'err' ? 'toast toast-err'
+          :                    'toast toast-info'
+          }`}
+        >
           {t.text}
         </div>
       ))}
