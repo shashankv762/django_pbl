@@ -309,8 +309,9 @@ export default function App() {
   const [nearbySubTab, setNearbySubTab] = useState<NearbySubTab>('lan');
 
   // ── Profile ──
-  const [profileName,  setProfileName]  = useState('User');
-  const [profileEmail, setProfileEmail] = useState('user@example.com');
+const [profileName,  setProfileName]  = useState(() => { try { return JSON.parse(localStorage.getItem('aegix_profile') || '{}').name || 'User'; } catch { return 'User'; } });
+const [profileEmail, setProfileEmail] = useState(() => { try { return JSON.parse(localStorage.getItem('aegix_profile') || '{}').email || 'user@example.com'; } catch { return 'user@example.com'; } });
+const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.parse(localStorage.getItem('aegix_profile') || '{}'); return p.device || 'My Device'; } catch { return 'My Device'; } });
 
   // ── App Settings (persistent, localStorage) ──
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -1831,6 +1832,21 @@ export default function App() {
         <div style={{flex:1,overflowY:'auto'}}>
           <div style={{maxWidth:'672px',margin:'0 auto',padding:'var(--sp-6) var(--sp-4)',display:'flex',flexDirection:'column',gap:'var(--sp-6)'}}>
 
+            {/* ── HTTP security notice ── */}
+            {!window.isSecureContext &&
+             window.location.hostname !== 'localhost' &&
+             window.location.hostname !== '127.0.0.1' && (
+              <div style={{background:'color-mix(in srgb,var(--c-warn) 8%,transparent)',border:'1px solid color-mix(in srgb,var(--c-warn) 28%,transparent)',borderRadius:'var(--r-xl)',padding:'var(--sp-3) var(--sp-4)',display:'flex',alignItems:'flex-start',gap:'var(--sp-3)'}}>
+                <Lock size={15} color="var(--c-warn)" style={{flexShrink:0,marginTop:'1px'}} />
+                <div>
+                  <p style={{fontSize:'var(--ts-sm)',fontWeight:600,color:'var(--c-warn)'}}>HTTP — File downloads may be blocked on mobile</p>
+                  <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'2px'}}>
+                    Run <span style={{fontFamily:"var(--font-mono)",color:'var(--c-accent)'}}>start_https.bat</span> for HTTPS mode (port 8443), then reopen from that URL.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* ── SEND & RECEIVE TAB ── */}
             {tab === 'send' && (
               <div style={{display:'flex',flexDirection:'column',gap:'var(--sp-6)'}}>
@@ -2843,25 +2859,112 @@ export default function App() {
 
             {/* ── PROFILE TAB ── */}
             {tab === 'profile' && (
-              <div className="flex flex-col gap-5">
-                <h1 style={{fontSize:'var(--ts-2xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em'}}>Profile</h1>
-                <div className="bg-[#13161f] border border-[#1e2133] rounded-2xl p-5 flex flex-col gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-600 to-purple-700 flex items-center justify-center text-white text-xl font-extrabold">{profileName.charAt(0).toUpperCase()}</div>
-                    <div><p className="font-extrabold text-white">{profileName}</p><p className="text-xs text-slate-500">{profileEmail || 'Guest session'}</p>{isGuest && <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full mt-1 inline-block">Guest</span>}</div>
+              <div style={{display:'flex',flexDirection:'column',gap:'var(--sp-6)'}}>
+
+                {/* Header */}
+                <div>
+                  <h1 style={{fontSize:'var(--ts-2xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em'}}>Profile</h1>
+                  <p style={{fontSize:'var(--ts-sm)',color:'var(--c-t3)',marginTop:'var(--sp-1)'}}>Manage your identity, preferences and privacy</p>
+                </div>
+
+                {/* Identity card */}
+                <div className="card" style={{padding:'var(--sp-5)',display:'flex',flexDirection:'column',gap:'var(--sp-4)'}}>
+                  <p className="section-label">Identity</p>
+                  <div style={{display:'flex',alignItems:'center',gap:'var(--sp-4)'}}>
+                    <div style={{width:'60px',height:'60px',borderRadius:'50%',background:'var(--c-accent-x)',border:'2px solid var(--c-accent-b)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--c-accent)',fontWeight:700,fontSize:'24px',flexShrink:0}}>
+                      {profileName.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{minWidth:0}}>
+                      <p style={{fontWeight:700,color:'var(--c-t1)',fontSize:'var(--ts-lg)'}}>{profileName}</p>
+                      <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'2px'}}>{profileEmail || 'No email set'}</p>
+                      {isGuest && <span className="badge badge-warn" style={{marginTop:'4px',display:'inline-flex'}}>Guest session</span>}
+                    </div>
                   </div>
-                  {[{ label: 'Display Name', val: profileName, set: setProfileName, type: 'text' }, { label: 'Email', val: profileEmail, set: setProfileEmail, type: 'email' }].map(({ label, val, set, type }) => (
-                    <div key={label} className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{label}</label>
-                      <input type={type} value={val} onChange={e => set(e.target.value)} className="bg-[#0d0e17] border border-[#1e2133] rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500" />
+                  {([{ label: 'Display Name', val: profileName, set: setProfileName, type: 'text', placeholder: 'Your name' }, { label: 'Email', val: profileEmail, set: setProfileEmail, type: 'email', placeholder: 'you@example.com' }] as { label: string; val: string; set: (v:string)=>void; type: string; placeholder: string }[]).map(({ label, val, set, type, placeholder }) => (
+                    <div key={label} style={{display:'flex',flexDirection:'column',gap:'var(--sp-2)'}}>
+                      <label className="section-label">{label}</label>
+                      <input type={type} value={val} onChange={e => set(e.target.value)} placeholder={placeholder} className="input" />
                     </div>
                   ))}
-                  <button onClick={() => toast('Profile saved!', 'ok')} className="py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-colors">Save changes</button>
+                  <div style={{display:'flex',flexDirection:'column',gap:'var(--sp-2)'}}>
+                    <label className="section-label">Device Name (LAN)</label>
+                    <input type="text" value={deviceName} onChange={e => setDeviceName(e.target.value)} placeholder="My Device" className="input" />
+                    <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)'}}>Shown to nearby devices on the same network</p>
+                  </div>
+                  <button className="btn-primary" onClick={() => {
+                    localStorage.setItem('aegix_profile', JSON.stringify({ name: profileName, email: profileEmail, device: deviceName }));
+                    toast('Profile saved!', 'ok');
+                  }}>Save changes</button>
                 </div>
-                <button onClick={() => { setIsLoggedIn(false); setIsGuest(false); toast('Signed out.', 'info'); }}
-                  className="flex items-center justify-center gap-2 py-3 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-500/5 text-sm font-bold transition-all">
-                  <LogOut className="w-4 h-4" /> Sign out
+
+                {/* Stats card */}
+                <div className="card" style={{padding:'var(--sp-5)',display:'flex',flexDirection:'column',gap:'var(--sp-4)'}}>
+                  <p className="section-label">Session Statistics</p>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'var(--sp-3)'}}>
+                    {([
+                      { label: 'Files Encrypted', value: String(libStats.count ?? 0) },
+                      { label: 'Total Size', value: libStats.bytes != null ? (libStats.bytes >= 1073741824 ? (libStats.bytes/1073741824).toFixed(1)+' GB' : libStats.bytes >= 1048576 ? (libStats.bytes/1048576).toFixed(1)+' MB' : (libStats.bytes/1024).toFixed(0)+' KB') : '0 KB' },
+                      { label: 'Transfers', value: String(transfers.length) },
+                      { label: 'Server IP', value: serverIp || '—' },
+                    ] as {label:string;value:string}[]).map(({ label, value }) => (
+                      <div key={label} className='card' style={{padding:'var(--sp-3) var(--sp-4)',background:'var(--c-s2)'}}>
+                        <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)'}}>{label}</p>
+                        <p style={{fontSize:'var(--ts-base)',fontWeight:700,color:'var(--c-t1)',marginTop:'2px',fontFamily:'var(--font-mono)'}}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Security info */}
+                <div className="card" style={{padding:'var(--sp-5)',display:'flex',flexDirection:'column',gap:'var(--sp-3)'}}>
+                  <p className="section-label">Security</p>
+                  <div className="status-row status-row-accent" style={{gap:'var(--sp-3)'}}>
+                    <Shield size={16} color="var(--c-accent)" style={{flexShrink:0}} />
+                    <div><p style={{fontSize:'var(--ts-sm)',fontWeight:600,color:'var(--c-t1)'}}>AES-256-GCM Encryption</p><p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'2px'}}>All files encrypted client-side. Servers never see your data.</p></div>
+                  </div>
+                  <div className="status-row status-row-muted" style={{gap:'var(--sp-3)'}}>
+                    <Lock size={16} color="var(--c-t3)" style={{flexShrink:0}} />
+                    <div><p style={{fontSize:'var(--ts-sm)',fontWeight:500,color:'var(--c-t1)'}}>HTTPS Status</p>
+                      <p style={{fontSize:'var(--ts-xs)',color:window.isSecureContext?'var(--c-ok)':'var(--c-warn)',marginTop:'2px'}}>
+                        {window.isSecureContext ? '\u2713 Secure — downloads & camera work on all devices' : '\u26A0 HTTP only — run start_https.bat for mobile support'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Privacy & Data */}
+                <div className="card" style={{padding:'var(--sp-5)',display:'flex',flexDirection:'column',gap:'var(--sp-3)'}}>
+                  <p className="section-label">Privacy &amp; Data</p>
+                  <button className='btn-secondary' style={{justifyContent:'flex-start',gap:'var(--sp-3)'}} onClick={() => { setTransfers([]); toast('Transfer history cleared', 'ok'); }}>
+                    <X size={15} /> Clear transfer history
+                  </button>
+                  <button className='btn-danger' style={{justifyContent:'flex-start',gap:'var(--sp-3)'}} onClick={() => {
+                    if (confirm('Delete all session data? This cannot be undone.')) {
+                      setTransfers([]); setUploadQueue([]); setPassword(''); localStorage.clear(); toast('All session data cleared', 'info');
+                    }
+                  }}>
+                    <LogOut size={15} /> Clear all session data
+                  </button>
+                </div>
+
+                {/* About */}
+                <div className="card" style={{padding:'var(--sp-5)',display:'flex',flexDirection:'column',gap:'var(--sp-3)'}}>
+                  <p className="section-label">About</p>
+                  <div style={{display:'flex',flexDirection:'column',gap:0}}>
+                    {([['App','AEGIX SHARE'],['Encryption','AES-256-GCM + PBKDF2-SHA256'],['Transport','Chunked multipart over HTTP(S)'],['Zero-knowledge','Key in URL fragment — never sent'],['LAN mode','Direct WiFi — no internet needed']] as [string,string][]).map(([k,v]) => (
+                      <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'var(--sp-4)',padding:'var(--sp-2) 0',borderBottom:'1px solid var(--c-b1)'}}>
+                        <span style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',flexShrink:0}}>{k}</span>
+                        <span style={{fontSize:'var(--ts-xs)',color:'var(--c-t2)',textAlign:'right'}}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Sign out */}
+                <button className='btn-danger' style={{justifyContent:'center',gap:'var(--sp-2)'}} onClick={() => { setIsLoggedIn(false); setIsGuest(false); toast('Signed out.', 'info'); }}>
+                  <LogOut size={16} /> Sign out
                 </button>
+
               </div>
             )}
           </div>
@@ -3003,19 +3106,65 @@ export default function App() {
             </div>
             <div className="px-5 pt-4 pb-1"><span className="text-[9px] font-extrabold text-slate-600 uppercase tracking-[0.15em]">Share via app</span></div>
             <div className="px-3 pb-6 flex flex-col gap-0.5">
-              {[
-                { name: 'WhatsApp', bg: 'from-[#25D366] to-[#1DA851]', emoji: '💬', href: () => `https://wa.me/?text=${encodeURIComponent(`📦 ${lastTransfer.name}\n${lastTransfer.downloadUrl}`)}`, copy: false },
-                { name: 'Telegram', bg: 'from-[#2AABEE] to-[#229ED9]', emoji: '✈️', href: () => `https://t.me/share/url?url=${encodeURIComponent(lastTransfer.downloadUrl)}&text=${encodeURIComponent(lastTransfer.name)}`, copy: false },
-                { name: 'X / Twitter', bg: 'from-[#14171A] to-[#000]', emoji: '𝕏', href: () => `https://twitter.com/intent/tweet?url=${encodeURIComponent(lastTransfer.downloadUrl)}&text=${encodeURIComponent(`Sharing: ${lastTransfer.name}`)}`, copy: false },
-                { name: 'Email', bg: 'from-[#6264A7] to-[#4a4c8a]', emoji: '✉️', href: () => `mailto:?subject=${encodeURIComponent(lastTransfer.name)}&body=${encodeURIComponent(`Download: ${lastTransfer.downloadUrl}`)}`, copy: false },
-                { name: 'SMS', bg: 'from-[#34C759] to-[#28a745]', emoji: '💬', href: () => `sms:?body=${encodeURIComponent(`${lastTransfer.name}: ${lastTransfer.downloadUrl}`)}`, copy: false },
-                { name: 'Instagram (copy link)', bg: 'from-[#E1306C] to-[#833AB4]', emoji: '📸', href: () => '', copy: true },
-              ].map(({ name, bg, emoji, href, copy }) => (
-                <button key={name} onClick={() => { if (copy) { navigator.clipboard.writeText(lastTransfer.downloadUrl); toast('Link copied for Instagram!', 'ok'); } else window.open(href(), '_blank'); }}
-                  className="w-full flex items-center gap-3.5 px-3 py-3.5 rounded-2xl hover:bg-[#1a1d2e] transition-all group">
-                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${bg} flex items-center justify-center shrink-0 text-lg`}>{emoji}</div>
-                  <div className="flex-1 text-left"><p className="text-xs font-bold text-slate-200">{name}</p></div>
-                  {copy ? <Copy className="w-3.5 h-3.5 text-slate-600" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-600" />}
+              {([
+                {
+                  name: 'WhatsApp',
+                  color: '#25D366',
+                  svg: (<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347zM11.999 2C6.477 2 2 6.477 2 12c0 1.756.459 3.45 1.337 4.937L2 22l5.233-1.37A9.959 9.959 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 11.999 2zm0 18.333a8.333 8.333 0 01-4.237-1.155l-.305-.181-3.105.814.832-3.021-.199-.32A8.34 8.34 0 013.667 12c0-4.604 3.745-8.333 8.332-8.333 4.59 0 8.334 3.73 8.334 8.333 0 4.604-3.745 8.333-8.334 8.333z"/></svg>),
+                  href: () => `https://wa.me/?text=${encodeURIComponent(`📦 ${lastTransfer.name}\n${lastTransfer.downloadUrl}`)}`,
+                  copy: false,
+                },
+                {
+                  name: 'Telegram',
+                  color: '#0088CC',
+                  svg: (<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>),
+                  href: () => `https://t.me/share/url?url=${encodeURIComponent(lastTransfer.downloadUrl)}&text=${encodeURIComponent(lastTransfer.name)}`,
+                  copy: false,
+                },
+                {
+                  name: 'X / Twitter',
+                  color: '#000000',
+                  svg: (<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.213 5.567zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>),
+                  href: () => `https://twitter.com/intent/tweet?url=${encodeURIComponent(lastTransfer.downloadUrl)}&text=${encodeURIComponent(`Sharing: ${lastTransfer.name}`)}`,
+                  copy: false,
+                },
+                {
+                  name: 'Email',
+                  color: '#6264A7',
+                  svg: (<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>),
+                  href: () => `mailto:?subject=${encodeURIComponent(lastTransfer.name)}&body=${encodeURIComponent(`Download: ${lastTransfer.downloadUrl}`)}`,
+                  copy: false,
+                },
+                {
+                  name: 'SMS',
+                  color: '#34C759',
+                  svg: (<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12zM7 9h2v2H7zm4 0h2v2h-2zm4 0h2v2h-2z"/></svg>),
+                  href: () => `sms:?body=${encodeURIComponent(`${lastTransfer.name}: ${lastTransfer.downloadUrl}`)}`,
+                  copy: false,
+                },
+                {
+                  name: 'Instagram (copy link)',
+                  color: '#E1306C',
+                  svg: (<svg viewBox="0 0 24 24" width="20" height="20" fill="#fff"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>),
+                  href: () => '',
+                  copy: true,
+                },
+              ] as { name: string; color: string; svg: React.ReactNode; href: () => string; copy: boolean }[]).map(({ name, color, svg, href, copy }) => (
+                <button key={name} onClick={() => {
+                  if (copy) { navigator.clipboard.writeText(lastTransfer.downloadUrl); toast('Link copied for Instagram!', 'ok'); }
+                  else window.open(href(), '_blank');
+                }}
+                  style={{width:'100%',display:'flex',alignItems:'center',gap:'14px',padding:'12px',borderRadius:'var(--r-xl)',transition:'background 0.15s ease',background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit'}}
+                  onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='var(--c-s2)'}
+                  onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='transparent'}
+                >
+                  <div style={{width:'40px',height:'40px',borderRadius:'var(--r-lg)',background:color,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    {svg}
+                  </div>
+                  <div style={{flex:1,textAlign:'left'}}>
+                    <p style={{fontSize:'var(--ts-sm)',fontWeight:600,color:'var(--c-t1)'}}>{name}</p>
+                  </div>
+                  {copy ? <Copy size={14} color="var(--c-t3)" /> : <ChevronRight size={14} color="var(--c-t3)" />}
                 </button>
               ))}
             </div>
