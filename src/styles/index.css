@@ -1,0 +1,101 @@
+/* ── Aegix Share — Single stylesheet ── */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&family=Outfit:wght@100..900&display=swap');
+@import 'tailwindcss';
+
+/* ── Design tokens ── */
+:root {
+  --primary:    262.1 83.3% 57.8%;
+  --background: 224 71% 4%;
+  --foreground: 210 20% 98%;
+  --border:     240 3.7% 15.9%;
+  --radius:     1rem;
+  font-family: 'Plus Jakarta Sans', 'Outfit', system-ui, sans-serif;
+}
+
+/* ── Global resets ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  background-color: #020617;
+  color: #f8fafc;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
+}
+
+/* ── Custom scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,.07); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,.35); }
+
+/* ── Utility animations ── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: .15; transform: scale(1); }
+  50%       { opacity: .25; transform: scale(1.05); }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+
+.animate-pulse-glow  { animation: pulse-glow 8s ease-in-out infinite; }
+.animate-fade-in     { animation: fade-in 0.25s ease-out forwards; }
+.animate-slide-up    { animation: slide-up 0.3s cubic-bezier(.4,0,.2,1) forwards; }
+.animate-spin-slow   { animation: spin-slow 3s linear infinite; }
+
+/* ── Glass morphism ── */
+.glass-panel {
+  background: rgba(15,23,42,.45);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.glass-panel-hover {
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+}
+.glass-panel-hover:hover {
+  background: rgba(15,23,42,.6);
+  border-color: rgba(99,102,241,.25);
+  box-shadow: 0 0 30px rgba(99,102,241,.1);
+}
+
+/* ── Wormhole progress pipe ── */
+.pipe-track {
+  background: linear-gradient(90deg, rgba(99,102,241,.08) 0%, rgba(168,85,247,.08) 100%);
+  border: 1px solid rgba(99,102,241,.15);
+}
+.pipe-fill-send {
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+  box-shadow: 0 0 10px rgba(99,102,241,.4);
+}
+.pipe-fill-recv {
+  background: linear-gradient(90deg, #10b981, #34d399);
+  box-shadow: 0 0 10px rgba(16,185,129,.4);
+}
+
+/* ── Settings: density scaling via root font-size ── */
+/* (Injected dynamically by applyDensity — these are fallback declarations) */
+html[data-density="compact"]     { font-size: 14px; }
+html[data-density="normal"]      { font-size: 16px; }
+html[data-density="comfortable"] { font-size: 18px; }
+
+/* ── Settings: accent hue smooth transition ── */
+#aegix-app-root {
+  transition: filter 0.25s ease;
+}
+
+/* ── Settings: reduced motion ── */
+html[data-motion="reduce"] *,
+html[data-motion="reduce"] *::before,
+html[data-motion="reduce"] *::after {
+  animation-duration:        0.01ms !important;
+  animation-iteration-count: 1      !important;
+  transition-duration:       0.01ms !important;
+  scroll-behavior:           auto   !important;
+}
