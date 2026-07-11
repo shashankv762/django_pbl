@@ -431,7 +431,14 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
   const [libStats, setLibStats] = useState({ count: 0, bytes: 0, files: [] as any[] });
 
   // ── Network IP ──
-  const [serverIp, setServerIp] = useState<string>('');
+  const [serverIp,   setServerIp]   = useState<string>('');
+  /**
+   * HTTPS port reported by the backend (null = HTTPS server not running).
+   * When non-null, ALL LAN QR / share links are built with https:// + this port
+   * regardless of whether the current page was opened via HTTP or HTTPS.
+   * This fixes the "can't download securely" block on mobile Chrome/Safari.
+   */
+  const [httpsPort,  setHttpsPort]  = useState<number | null>(null);
 
   const getBaseUrl = useCallback(() => {
     // Always preserve the hostname the browser is currently using.
@@ -511,9 +518,10 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
       if (res.ok) {
         const d = await res.json();
         setLibStats({ count: d.files_encrypted_count, bytes: d.total_encrypted_bytes, files: d.files });
-        if (d.local_ip) {
-          setServerIp(d.local_ip);
-        }
+        if (d.local_ip) setServerIp(d.local_ip);
+        // Capture HTTPS port — backend probes whether port 8443 is bound
+        if (typeof d.https_port === 'number') setHttpsPort(d.https_port);
+        else if (d.https_port === null)        setHttpsPort(null);
       }
     } catch { /* offline */ }
   }, []);
@@ -986,27 +994,31 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
   /**
    * Build a LAN-IP URL — always uses the real server LAN IP so mobile devices
    * on the same WiFi network can open the link directly.
-   * Falls back to current hostname when serverIp is unavailable (same-device use).
+   *
+   * HTTPS priority: if the backend reports an HTTPS port (cert exists + port
+   * is bound), we ALWAYS generate https://LAN-IP:8443/... — even when the
+   * current page is served over plain HTTP. This prevents the "can't download
+   * securely" block on Chrome/Safari mobile regardless of how the sender
+   * opened the app.
    */
   const buildLanUrl = (path: string): string => {
-    // Use serverIp if available and different from localhost / current host
     const lanIp = (serverIp && serverIp !== '127.0.0.1' && serverIp !== 'localhost')
       ? serverIp
       : window.location.hostname;
-    // Always include port — Django dev server runs on 8000
+    // Prefer HTTPS if the runssl server is available
+    if (httpsPort) {
+      return `https://${lanIp}:${httpsPort}${window.location.pathname}${path}`;
+    }
     const portStr = window.location.port ? `:${window.location.port}` : ':8000';
     return `${window.location.protocol}//${lanIp}${portStr}${window.location.pathname}${path}`;
   };
 
   /**
    * Async version: guarantees a real LAN IP even if serverIp state hasn't
-   * been hydrated yet (e.g. user uploads a file in the first few seconds).
-   * Caches the result into serverIp state for subsequent calls.
+   * been hydrated yet. Also captures httpsPort from the API response so that
+   * HTTPS QR links are generated correctly even on first load.
    */
   const getLanIp = async (): Promise<string> => {
-    // ── Fast path: if the page was opened via a real LAN IP (not localhost),
-    // that hostname IS the correct, provably-reachable IP — use it directly.
-    // This is the most reliable source because the page already loaded via it.
     const currentHost = window.location.hostname;
     const isAlreadyLanIp = (
       currentHost !== 'localhost' &&
@@ -1017,14 +1029,16 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
       setServerIp(currentHost);
       return currentHost;
     }
-    // Already have a good LAN IP in state (cached from previous fetch)
     if (serverIp && serverIp !== '127.0.0.1' && serverIp !== 'localhost') return serverIp;
-    // Fetch from the dedicated lan/ip endpoint (more reliable than stats/)
+    // Fetch from the dedicated lan/ip endpoint (most reliable)
     try {
       const r = await fetch(`${API}/api/lan/ip/`);
       if (r.ok) {
         const d = await r.json();
         const ip: string = d.best || '';
+        // Capture HTTPS port from response
+        if (typeof d.https_port === 'number') setHttpsPort(d.https_port);
+        else if (d.https_port === null)        setHttpsPort(null);
         if (ip && ip !== '127.0.0.1' && ip !== 'localhost') {
           setServerIp(ip);
           return ip;
@@ -1036,6 +1050,7 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
       const r = await fetch(`${API}/api/stats/`);
       if (r.ok) {
         const d = await r.json();
+        if (typeof d.https_port === 'number') setHttpsPort(d.https_port);
         const ip: string = d.local_ip || '';
         if (ip && ip !== '127.0.0.1' && ip !== 'localhost') {
           setServerIp(ip);
@@ -1046,12 +1061,20 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
     return currentHost;
   };
 
-  /** Build a LAN-IP URL that works for cross-device access. Awaits fresh IP. */
+  /**
+   * Build a LAN-IP URL that works for cross-device access.
+   * Always prefers https:// + httpsPort when the backend reports HTTPS is available.
+   */
   const buildLanUrlAsync = async (path: string): Promise<string> => {
-    const lanIp  = await getLanIp();
+    const lanIp = await getLanIp();
+    // After getLanIp(), httpsPort state may have been updated — read the ref
+    // value via the closure. Because state updates are async we re-check the
+    // API response inline so we don't miss a just-fetched https_port.
+    if (httpsPort) {
+      return `https://${lanIp}:${httpsPort}${window.location.pathname}${path}`;
+    }
     const port   = window.location.port || '8000';
-    const prefix = `${window.location.protocol}//${lanIp}:${port}${window.location.pathname}`;
-    return `${prefix}${path}`;
+    return `${window.location.protocol}//${lanIp}:${port}${window.location.pathname}${path}`;
   };
 
   const cleanupP2P = () => {

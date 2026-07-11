@@ -23,6 +23,45 @@ from datetime import timedelta
 from .models import Transfer, TransferChunk, WebRTCRoom, WebRTCSignal
 
 
+# ─── HTTPS detection helper ───────────────────────────────────────────────────
+
+def _detect_https_port(preferred: int = 8443) -> int | None:
+    """
+    Detect whether the HTTPS (runssl) server is currently listening.
+
+    Strategy:
+    1. Check whether cert.pem and key.pem exist next to manage.py — that means
+       runssl was used at least once and generated the certificate.
+    2. Probe the preferred port (default 8443) with a non-blocking TCP connect
+       to confirm the server is actually bound.
+
+    Returns the HTTPS port number if detected, else None.
+    """
+    from django.conf import settings
+    base_dir = str(settings.BASE_DIR)
+    cert_path = os.path.join(base_dir, 'cert.pem')
+    key_path  = os.path.join(base_dir, 'key.pem')
+
+    # No cert file means runssl was never used — skip socket probe
+    if not (os.path.exists(cert_path) and os.path.exists(key_path)):
+        return None
+
+    # Probe to confirm the port is actually bound right now
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.3)          # 300 ms — fast enough for a local probe
+        result = sock.connect_ex(('127.0.0.1', preferred))
+        sock.close()
+        if result == 0:
+            return preferred          # port is open
+    except OSError:
+        pass
+
+    # Port not bound but cert exists — server may have been stopped; still
+    # return the port so the frontend knows to display an HTTPS URL.
+    # The mobile user will see "connection refused" rather than a security block.
+    return preferred
+
 # ─── LAN Peer Registry ────────────────────────────────────────────────────────
 # Thread-safe in-memory registry. Each device POSTs to /api/lan/announce/
 # every 3 s; entries older than 12 s are pruned automatically.
@@ -515,15 +554,20 @@ def get_stats(request):
         if hasattr(f['expires_at'], 'isoformat'):
             f['expires_at'] = f['expires_at'].isoformat()
 
-    local_ip = _get_local_ip()
+    local_ip  = _get_local_ip()
+    http_port  = int(request.META.get('SERVER_PORT', 8000))
+    https_port = _detect_https_port(8443)
 
     resp = JsonResponse({
         'files_encrypted_count': total,
-        'active_links_count': total,
+        'active_links_count':    total,
         'total_encrypted_bytes': total_bytes,
-        'files': files_list,
-        'local_ip': local_ip,
-        'port': 8000,
+        'files':     files_list,
+        'local_ip':  local_ip,
+        'port':      http_port,
+        'http_port': http_port,
+        'https_port': https_port,          # None when HTTPS not available
+        'https_url': f'https://{local_ip}:{https_port}' if https_port else None,
     })
     resp['Access-Control-Allow-Origin'] = '*'
     return resp
@@ -575,7 +619,17 @@ def get_lan_ip(request):
     ranked = [ip for _, ip in candidates]
     best = ranked[0] if ranked else '127.0.0.1'
 
-    resp = JsonResponse({'best': best, 'all': ranked, 'port': 8000})
+    http_port  = int(request.META.get('SERVER_PORT', 8000))
+    https_port = _detect_https_port(8443)
+
+    resp = JsonResponse({
+        'best':       best,
+        'all':        ranked,
+        'port':       http_port,
+        'http_port':  http_port,
+        'https_port': https_port,           # None when HTTPS not running
+        'https_url':  f'https://{best}:{https_port}' if https_port else None,
+    })
     resp['Access-Control-Allow-Origin'] = '*'
     resp['Cache-Control'] = 'no-store'
     return resp
