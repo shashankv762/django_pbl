@@ -431,14 +431,32 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
   const [libStats, setLibStats] = useState({ count: 0, bytes: 0, files: [] as any[] });
 
   // ── Network IP ──
-  const [serverIp,   setServerIp]   = useState<string>('');
+  const [serverIp,  setServerIp]  = useState<string>('');
   /**
    * HTTPS port reported by the backend (null = HTTPS server not running).
    * When non-null, ALL LAN QR / share links are built with https:// + this port
    * regardless of whether the current page was opened via HTTP or HTTPS.
-   * This fixes the "can't download securely" block on mobile Chrome/Safari.
    */
-  const [httpsPort,  setHttpsPort]  = useState<number | null>(null);
+  const [httpsPort, setHttpsPort] = useState<number | null>(null);
+  /**
+   * httpsPortRef mirrors httpsPort state SYNCHRONOUSLY.
+   *
+   * React state setters are async — reading `httpsPort` inside a closure
+   * immediately after calling `setHttpsPort(x)` returns the OLD value.
+   * This ref is always updated in the same tick as setHttpsPort so that
+   * buildLanUrl / buildLanUrlAsync can read the current value without
+   * being blocked by React's batching.
+   */
+  const httpsPortRef = useRef<number | null>(null);
+
+  // Keep ref in sync whenever state changes
+  useEffect(() => { httpsPortRef.current = httpsPort; }, [httpsPort]);
+
+  /** Helper: update both the state and the ref atomically. */
+  const applyHttpsPort = (p: number | null) => {
+    httpsPortRef.current = p;   // immediate — available in the same tick
+    setHttpsPort(p);            // triggers re-render
+  };
 
   const getBaseUrl = useCallback(() => {
     // Always preserve the hostname the browser is currently using.
@@ -519,11 +537,13 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
         const d = await res.json();
         setLibStats({ count: d.files_encrypted_count, bytes: d.total_encrypted_bytes, files: d.files });
         if (d.local_ip) setServerIp(d.local_ip);
-        // Capture HTTPS port — backend probes whether port 8443 is bound
-        if (typeof d.https_port === 'number') setHttpsPort(d.https_port);
-        else if (d.https_port === null)        setHttpsPort(null);
+        // Capture HTTPS port — update ref first so callers in the same tick
+        // see the correct value, then update state to trigger re-render.
+        const p: number | null = typeof d.https_port === 'number' ? d.https_port : null;
+        applyHttpsPort(p);
       }
     } catch { /* offline */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -995,85 +1015,120 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
    * Build a LAN-IP URL — always uses the real server LAN IP so mobile devices
    * on the same WiFi network can open the link directly.
    *
-   * HTTPS priority: if the backend reports an HTTPS port (cert exists + port
-   * is bound), we ALWAYS generate https://LAN-IP:8443/... — even when the
-   * current page is served over plain HTTP. This prevents the "can't download
-   * securely" block on Chrome/Safari mobile regardless of how the sender
-   * opened the app.
+   * HTTPS priority: reads httpsPortRef.current (not the httpsPort state) so
+   * that the correct port is available synchronously even if the state update
+   * hasn't been re-rendered yet (avoids the stale-closure race condition).
    */
   const buildLanUrl = (path: string): string => {
     const lanIp = (serverIp && serverIp !== '127.0.0.1' && serverIp !== 'localhost')
       ? serverIp
       : window.location.hostname;
-    // Prefer HTTPS if the runssl server is available
-    if (httpsPort) {
-      return `https://${lanIp}:${httpsPort}${window.location.pathname}${path}`;
+    const port = httpsPortRef.current;
+    if (port) {
+      return `https://${lanIp}:${port}${window.location.pathname}${path}`;
     }
     const portStr = window.location.port ? `:${window.location.port}` : ':8000';
     return `${window.location.protocol}//${lanIp}${portStr}${window.location.pathname}${path}`;
   };
 
   /**
-   * Async version: guarantees a real LAN IP even if serverIp state hasn't
-   * been hydrated yet. Also captures httpsPort from the API response so that
-   * HTTPS QR links are generated correctly even on first load.
+   * Typed return from the LAN-IP + HTTPS-port discovery fetch.
+   * Both values come from the SAME API response so they are always consistent.
    */
-  const getLanIp = async (): Promise<string> => {
+  interface LanInfo { ip: string; httpsPort: number | null; }
+
+  /**
+   * Async LAN-info resolver.
+   *
+   * Returns a { ip, httpsPort } object so the CALLER can use httpsPort
+   * directly without depending on React state (which may still be stale due
+   * to async batching).
+   *
+   * Side-effects: also updates serverIp state and applyHttpsPort (ref + state)
+   * so that subsequent synchronous calls to buildLanUrl also use the right port.
+   */
+  const getLanInfo = async (): Promise<LanInfo> => {
     const currentHost = window.location.hostname;
     const isAlreadyLanIp = (
       currentHost !== 'localhost' &&
       currentHost !== '127.0.0.1' &&
       /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(currentHost)
     );
+
+    // Fast-path A: page was opened via a real LAN IP (most reliable source).
+    // We still need to fetch https_port since the LAN-IP itself doesn't tell us.
+    // Attempt a quick /api/lan/ip/ call but fall back immediately on failure.
     if (isAlreadyLanIp) {
       setServerIp(currentHost);
-      return currentHost;
+      try {
+        const r = await fetch(`${API}/api/lan/ip/`, { signal: AbortSignal.timeout(2000) });
+        if (r.ok) {
+          const d = await r.json();
+          const p: number | null = typeof d.https_port === 'number' ? d.https_port : null;
+          applyHttpsPort(p);
+          return { ip: currentHost, httpsPort: p };
+        }
+      } catch { /* network issue — use current protocol */ }
+      // Could not reach API — return current port (no HTTPS upgrade possible)
+      return { ip: currentHost, httpsPort: null };
     }
-    if (serverIp && serverIp !== '127.0.0.1' && serverIp !== 'localhost') return serverIp;
-    // Fetch from the dedicated lan/ip endpoint (most reliable)
+
+    // Fast-path B: already have a cached good IP and a known https port.
+    if (serverIp && serverIp !== '127.0.0.1' && serverIp !== 'localhost') {
+      return { ip: serverIp, httpsPort: httpsPortRef.current };
+    }
+
+    // Primary fetch: /api/lan/ip/ (dedicated, low-traffic endpoint)
     try {
-      const r = await fetch(`${API}/api/lan/ip/`);
+      const r = await fetch(`${API}/api/lan/ip/`, { signal: AbortSignal.timeout(3000) });
       if (r.ok) {
         const d = await r.json();
-        const ip: string = d.best || '';
-        // Capture HTTPS port from response
-        if (typeof d.https_port === 'number') setHttpsPort(d.https_port);
-        else if (d.https_port === null)        setHttpsPort(null);
+        const ip: string        = d.best || '';
+        const p: number | null  = typeof d.https_port === 'number' ? d.https_port : null;
+        applyHttpsPort(p);
         if (ip && ip !== '127.0.0.1' && ip !== 'localhost') {
           setServerIp(ip);
-          return ip;
+          return { ip, httpsPort: p };
         }
       }
-    } catch { /* offline or endpoint missing — try stats/ */ }
-    // Fallback: try stats/ (backward compat)
+    } catch { /* offline or missing endpoint — try stats/ */ }
+
+    // Fallback: /api/stats/ (always present, backward compat)
     try {
-      const r = await fetch(`${API}/api/stats/`);
+      const r = await fetch(`${API}/api/stats/`, { signal: AbortSignal.timeout(3000) });
       if (r.ok) {
         const d = await r.json();
-        if (typeof d.https_port === 'number') setHttpsPort(d.https_port);
-        const ip: string = d.local_ip || '';
+        const ip: string        = d.local_ip || '';
+        const p: number | null  = typeof d.https_port === 'number' ? d.https_port : null;
+        applyHttpsPort(p);
         if (ip && ip !== '127.0.0.1' && ip !== 'localhost') {
           setServerIp(ip);
-          return ip;
+          return { ip, httpsPort: p };
         }
       }
-    } catch { /* offline — fall back to current hostname */ }
-    return currentHost;
+    } catch { /* fully offline */ }
+
+    // Last resort: use whatever hostname the browser is on
+    return { ip: currentHost, httpsPort: httpsPortRef.current };
   };
+
+  /** Backward-compat wrapper returning just the IP string. */
+  const getLanIp = async (): Promise<string> => (await getLanInfo()).ip;
 
   /**
    * Build a LAN-IP URL that works for cross-device access.
-   * Always prefers https:// + httpsPort when the backend reports HTTPS is available.
+   *
+   * KEY FIX: uses the httpsPort returned BY getLanInfo() directly, not the
+   * httpsPort React state variable — avoiding the stale-closure race where
+   * setHttpsPort(x) is called inside getLanInfo() but the closure still reads
+   * the old value when it checks `if (httpsPort)` one line later.
    */
   const buildLanUrlAsync = async (path: string): Promise<string> => {
-    const lanIp = await getLanIp();
-    // After getLanIp(), httpsPort state may have been updated — read the ref
-    // value via the closure. Because state updates are async we re-check the
-    // API response inline so we don't miss a just-fetched https_port.
-    if (httpsPort) {
-      return `https://${lanIp}:${httpsPort}${window.location.pathname}${path}`;
+    const { ip: lanIp, httpsPort: freshPort } = await getLanInfo();
+    if (freshPort) {
+      return `https://${lanIp}:${freshPort}${window.location.pathname}${path}`;
     }
-    const port   = window.location.port || '8000';
+    const port = window.location.port || '8000';
     return `${window.location.protocol}//${lanIp}:${port}${window.location.pathname}${path}`;
   };
 

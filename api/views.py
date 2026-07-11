@@ -23,44 +23,85 @@ from datetime import timedelta
 from .models import Transfer, TransferChunk, WebRTCRoom, WebRTCSignal
 
 
-# ─── HTTPS detection helper ───────────────────────────────────────────────────
 
-def _detect_https_port(preferred: int = 8443) -> int | None:
+# ─── HTTPS port detection — thread-safe TTL cache ─────────────────────────────
+# We probe the HTTPS port via TCP on every /api/lan/ip/ and /api/stats/ request.
+# A 300 ms socket timeout on every request would be unacceptable; cache for 5 s.
+_https_cache_lock   = threading.Lock()
+_https_cache: dict  = {
+    'port': None,   # int | None — the detected port, or None if not running
+    'ts':   0.0,    # float — time.monotonic() when the last probe ran
+    'ttl':  5.0,    # float — cache lifetime in seconds
+}
+
+
+def _detect_https_port(preferred: int = 8443) -> 'int | None':
     """
-    Detect whether the HTTPS (runssl) server is currently listening.
+    Determine whether the HTTPS dev server (runssl) is currently accepting
+    connections on *preferred* (default 8443).
 
-    Strategy:
-    1. Check whether cert.pem and key.pem exist next to manage.py — that means
-       runssl was used at least once and generated the certificate.
-    2. Probe the preferred port (default 8443) with a non-blocking TCP connect
-       to confirm the server is actually bound.
+    Rules:
+    - Returns *preferred* ONLY when BOTH conditions hold:
+        a) cert.pem and key.pem exist next to manage.py (proves runssl was run)
+        b) A non-blocking TCP connect to 127.0.0.1:preferred succeeds within
+           300 ms (proves the port is actually bound right now)
+    - Returns None in ALL other cases (cert missing, port unreachable, etc.)
+      so the frontend never generates an HTTPS QR code that leads to a
+      connection-refused error.
+    - Results are cached for 5 seconds so the TCP probe does not execute on
+      every request (stats/ and lan/ip/ are polled every few seconds).
 
-    Returns the HTTPS port number if detected, else None.
+    Security note: this only probes 127.0.0.1 — no external network traffic.
     """
-    from django.conf import settings
-    base_dir = str(settings.BASE_DIR)
-    cert_path = os.path.join(base_dir, 'cert.pem')
-    key_path  = os.path.join(base_dir, 'key.pem')
+    now = time.monotonic()
 
-    # No cert file means runssl was never used — skip socket probe
-    if not (os.path.exists(cert_path) and os.path.exists(key_path)):
+    # ── Fast path: serve from cache if still valid ────────────────────────────
+    with _https_cache_lock:
+        if now - _https_cache['ts'] < _https_cache['ttl']:
+            return _https_cache['port']
+
+    # ── Cache miss: perform real detection ────────────────────────────────────
+    detected = _run_https_probe(preferred)
+
+    with _https_cache_lock:
+        _https_cache['port'] = detected
+        _https_cache['ts']   = time.monotonic()
+
+    return detected
+
+
+def _run_https_probe(preferred: int) -> 'int | None':
+    """Inner worker — called only on cache miss. Never raises."""
+    # Step 1: certificate files must exist (quick filesystem check)
+    try:
+        from django.conf import settings as _s
+        base = str(_s.BASE_DIR)
+    except Exception:
         return None
 
-    # Probe to confirm the port is actually bound right now
+    cert_ok = (
+        os.path.isfile(os.path.join(base, 'cert.pem')) and
+        os.path.isfile(os.path.join(base, 'key.pem'))
+    )
+    if not cert_ok:
+        return None  # runssl has never been used — skip expensive probe
+
+    # Step 2: TCP probe — port must be actively bound
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.3)          # 300 ms — fast enough for a local probe
-        result = sock.connect_ex(('127.0.0.1', preferred))
+        sock.settimeout(0.3)                       # 300 ms is plenty for loopback
+        err  = sock.connect_ex(('127.0.0.1', preferred))
         sock.close()
-        if result == 0:
-            return preferred          # port is open
+        if err == 0:
+            return preferred                       # ✓ cert exists AND port bound
     except OSError:
         pass
 
-    # Port not bound but cert exists — server may have been stopped; still
-    # return the port so the frontend knows to display an HTTPS URL.
-    # The mobile user will see "connection refused" rather than a security block.
-    return preferred
+    # Cert exists but port is NOT bound → HTTPS server has been stopped.
+    # Returning None here is intentional: we must NOT send the frontend an HTTPS
+    # URL that would cause a "connection refused" on mobile.
+    return None
+
 
 # ─── LAN Peer Registry ────────────────────────────────────────────────────────
 # Thread-safe in-memory registry. Each device POSTs to /api/lan/announce/
