@@ -552,6 +552,102 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
     return () => clearInterval(t);
   }, [fetchStats]);
 
+  // ── Clear library state ──
+  /**
+   * Whether the destructive-action confirmation modal is visible.
+   * Using a dedicated state (not window.confirm) keeps the UI consistent
+   * with the existing design system and allows a loading spinner during the
+   * API call.
+   */
+  const [showClearLibraryConfirm, setShowClearLibraryConfirm] = useState(false);
+  /** True while the DELETE request to the server is in-flight. */
+  const [clearLibraryBusy, setClearLibraryBusy] = useState(false);
+
+  /**
+   * Clear all server-side Transfer records and their encrypted chunk files.
+   *
+   * Three-phase:
+   * 1. Call POST /api/library/clear/ — server deletes DB rows + disk files.
+   * 2. On success: reset local React state so the UI reflects the empty library.
+   * 3. On failure: show error toast, do NOT modify local state (data may still
+   *    exist on the server).
+   *
+   * Error paths handled:
+   * - Network unreachable → toast "Server unreachable"
+   * - Server 500          → toast server error message
+   * - Partial success     → server returns ok:true with non-empty errors[] array
+   *                         → show warning toast listing how many failed
+   */
+  const clearLibrary = async () => {
+    setClearLibraryBusy(true);
+    try {
+      const res = await fetch(`${API}/api/library/clear/`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal:  AbortSignal.timeout(15_000),   // 15 s — allow time for many chunks
+      });
+
+      if (!res.ok) {
+        // HTTP-level error (500, 503, etc.)
+        let msg = `Server error ${res.status}`;
+        try {
+          const d = await res.json();
+          if (d.error) msg = d.error;
+        } catch { /* non-JSON body */ }
+        toast(msg, 'err');
+        return;
+      }
+
+      type ClearResult = {
+        ok:                boolean;
+        deleted_transfers: number;
+        deleted_chunks:    number;
+        freed_bytes:       number;
+        errors:            Array<{ id: string; error: string }>;
+        error?:            string;
+      };
+
+      const data: ClearResult = await res.json();
+
+      if (!data.ok) {
+        toast(data.error ?? 'Clear failed — try again.', 'err');
+        return;
+      }
+
+      // ── Success: update local state ─────────────────────────────────────────
+      setTransfers([]);
+      setUploadQueue([]);
+      setLibStats({ count: 0, bytes: 0, files: [] });
+      setShowClearLibraryConfirm(false);
+
+      // Build human-readable freed-space string
+      const freed = data.freed_bytes >= 1_048_576
+        ? `${(data.freed_bytes / 1_048_576).toFixed(1)} MB`
+        : data.freed_bytes >= 1_024
+          ? `${(data.freed_bytes / 1_024).toFixed(0)} KB`
+          : `${data.freed_bytes} B`;
+
+      if (data.errors.length === 0) {
+        toast(
+          `Library cleared — ${data.deleted_transfers} file${data.deleted_transfers !== 1 ? 's' : ''}, ${freed} freed`,
+          'ok'
+        );
+      } else {
+        // Partial success: some transfers failed (e.g. file already deleted)
+        toast(
+          `Cleared ${data.deleted_transfers} files (${data.errors.length} could not be removed)`,
+          'info'
+        );
+      }
+
+    } catch (err: unknown) {
+      const isAbort = err instanceof DOMException && err.name === 'AbortError';
+      toast(isAbort ? 'Request timed out — server may be busy.' : 'Server unreachable — check the server is running.', 'err');
+    } finally {
+      setClearLibraryBusy(false);
+    }
+  };
+
   // ── LAN peer discovery: server-side polling (works across all devices on the network) ──
   useEffect(() => {
     if (!lanDiscoverable) return;
@@ -2687,7 +2783,18 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
               <div className="flex flex-col gap-5">
                 <div className="flex items-center justify-between">
               <h1 style={{fontSize:'var(--ts-2xl)',fontWeight:700,color:'var(--c-t1)',letterSpacing:'-0.02em'}}>File Library</h1>
-                  <button onClick={fetchStats} className="p-2 rounded-xl bg-[#1a1d2e] border border-[#1e2133] text-slate-400 hover:text-white transition-all"><RefreshCw className="w-4 h-4" /></button>
+                  <div style={{display:'flex',gap:'8px',alignItems:'center'}}>
+                    {libStats.count > 0 && (
+                      <button
+                        id="library-clear-btn"
+                        onClick={() => setShowClearLibraryConfirm(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Clear all
+                      </button>
+                    )}
+                    <button onClick={fetchStats} className="p-2 rounded-xl bg-[#1a1d2e] border border-[#1e2133] text-slate-400 hover:text-white transition-all"><RefreshCw className="w-4 h-4" /></button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   {[{ label: 'Active transfers', value: libStats.count }, { label: 'Total stored', value: fmtBytes(libStats.bytes) }].map(s => (
@@ -2705,6 +2812,67 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${f.is_complete ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'}`}>{f.is_complete ? 'ready' : 'live'}</span>
                   </div>
                 ))}
+
+                {/* ── Clear library confirmation modal ── */}
+                {showClearLibraryConfirm && (
+                  <div
+                    style={{
+                      position:'fixed',inset:0,zIndex:9999,
+                      background:'rgba(0,0,0,0.75)',backdropFilter:'blur(4px)',
+                      display:'flex',alignItems:'center',justifyContent:'center',padding:'var(--sp-6)',
+                    }}
+                    onClick={e => { if (e.target === e.currentTarget && !clearLibraryBusy) setShowClearLibraryConfirm(false); }}
+                  >
+                    <div style={{
+                      background:'var(--c-s1)',border:'1px solid #3a1a1a',borderRadius:'var(--r-xl)',
+                      padding:'var(--sp-6)',maxWidth:'380px',width:'100%',
+                      display:'flex',flexDirection:'column',gap:'var(--sp-4)',
+                      boxShadow:'0 25px 60px rgba(0,0,0,0.6)',
+                    }}>
+                      {/* Header */}
+                      <div style={{display:'flex',alignItems:'center',gap:'var(--sp-3)'}}>
+                        <div style={{width:'40px',height:'40px',borderRadius:'var(--r-lg)',background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.3)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                          <Trash2 size={18} color="#f87171" />
+                        </div>
+                        <div>
+                          <p style={{fontWeight:700,color:'var(--c-t1)',fontSize:'var(--ts-base)'}}>Clear entire library?</p>
+                          <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'2px'}}>This action cannot be undone</p>
+                        </div>
+                      </div>
+                      {/* Detail */}
+                      <div style={{background:'rgba(239,68,68,0.07)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:'var(--r-md)',padding:'var(--sp-3) var(--sp-4)'}}>
+                        <p style={{fontSize:'var(--ts-sm)',color:'#fca5a5',fontWeight:600}}>
+                          {libStats.count} file{libStats.count !== 1 ? 's' : ''} ({fmtBytes(libStats.bytes)}) will be permanently deleted from the server.
+                        </p>
+                        <p style={{fontSize:'var(--ts-xs)',color:'var(--c-t3)',marginTop:'var(--sp-2)'}}>
+                          Encrypted chunk files on disk will also be removed. Any active share links will immediately stop working.
+                        </p>
+                      </div>
+                      {/* Actions */}
+                      <div style={{display:'flex',gap:'var(--sp-3)'}}>
+                        <button
+                          onClick={() => setShowClearLibraryConfirm(false)}
+                          disabled={clearLibraryBusy}
+                          className="btn-secondary"
+                          style={{flex:1,justifyContent:'center',opacity:clearLibraryBusy?0.5:1}}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          id="library-clear-confirm-btn"
+                          onClick={clearLibrary}
+                          disabled={clearLibraryBusy}
+                          className="btn-danger"
+                          style={{flex:1,justifyContent:'center',gap:'var(--sp-2)',opacity:clearLibraryBusy?0.7:1}}
+                        >
+                          {clearLibraryBusy
+                            ? <><span style={{width:'14px',height:'14px',border:'2px solid rgba(255,255,255,0.3)',borderTopColor:'white',borderRadius:'50%',display:'inline-block',animation:'spin 0.8s linear infinite'}} /> Clearing…</>
+                            : <><Trash2 size={14}/> Delete all</>}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2902,7 +3070,15 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
                       <label id="settings-import-label" className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1a1d2e] hover:bg-[#20243a] text-slate-300 text-xs font-bold transition-colors cursor-pointer"><HardDriveDownload className="w-3.5 h-3.5"/> Import<input type="file" accept=".json,application/json" className="hidden" onChange={e => {const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const p=JSON.parse(ev.target?.result as string) as Partial<AppSettings>;const m={...DEFAULT_SETTINGS,...p,schemaVersion:DEFAULT_SETTINGS.schemaVersion};saveSettings(m);setSettings(m);applyAccentHue(m.accentHue);applyDensity(m.density);applyReducedMotion(m.reducedMotion);toast('Settings imported!','ok');}catch{toast('Invalid file.','err');}};r.readAsText(f);e.target.value='';}} /></label>
                     </div>
                     <div className="flex items-center justify-between px-5 py-3.5">
-                      <div><p className="text-sm font-semibold text-slate-200">Clear transfer history</p><p className="text-[10px] text-slate-500 mt-0.5">Remove all local transfer records from this session</p></div>
+                      <div><p className="text-sm font-semibold text-slate-200">Clear server library</p><p className="text-[10px] text-slate-500 mt-0.5">Delete all encrypted files from the server permanently</p></div>
+                      <button
+                        id="settings-clear-library-btn"
+                        onClick={() => { setTab('library'); setShowClearLibraryConfirm(true); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs font-bold transition-colors"
+                      ><Trash2 className="w-3.5 h-3.5"/> Clear library</button>
+                    </div>
+                    <div className="flex items-center justify-between px-5 py-3.5">
+                      <div><p className="text-sm font-semibold text-slate-200">Clear transfer history</p><p className="text-[10px] text-slate-500 mt-0.5">Remove local session records (does not affect server data)</p></div>
                       <button id="settings-clear-history-btn" onClick={() => {setTransfers([]);toast('Transfer history cleared.','info');}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-xs font-bold transition-colors"><Trash2 className="w-3.5 h-3.5"/> Clear</button>
                     </div>
                     <div className="flex items-center justify-between px-5 py-3.5">
@@ -3013,13 +3189,21 @@ const [deviceName,   setDeviceName]   = useState(() => { try { const p = JSON.pa
                 {/* Privacy & Data */}
                 <div className="card" style={{padding:'var(--sp-5)',display:'flex',flexDirection:'column',gap:'var(--sp-3)'}}>
                   <p className="section-label">Privacy &amp; Data</p>
-                  <button className='btn-secondary' style={{justifyContent:'flex-start',gap:'var(--sp-3)'}} onClick={() => { setTransfers([]); toast('Transfer history cleared', 'ok'); }}>
-                    <X size={15} /> Clear transfer history
+                  {/* Clear server library — calls the real backend endpoint */}
+                  <button
+                    className='btn-danger'
+                    style={{justifyContent:'flex-start',gap:'var(--sp-3)'}}
+                    onClick={() => setShowClearLibraryConfirm(true)}
+                  >
+                    <Trash2 size={15} /> Clear server library
                   </button>
-                  <button className='btn-danger' style={{justifyContent:'flex-start',gap:'var(--sp-3)'}} onClick={() => {
-                    if (confirm('Delete all session data? This cannot be undone.')) {
-                      setTransfers([]); setUploadQueue([]); setPassword(''); localStorage.clear(); toast('All session data cleared', 'info');
-                    }
+                  {/* Clear local session history (React state only, not server) */}
+                  <button className='btn-secondary' style={{justifyContent:'flex-start',gap:'var(--sp-3)'}} onClick={() => { setTransfers([]); toast('Transfer history cleared', 'ok'); }}>
+                    <X size={15} /> Clear local transfer history
+                  </button>
+                  <button className='btn-secondary' style={{justifyContent:'flex-start',gap:'var(--sp-3)','--btn-border-color':'rgba(239,68,68,0.2)','--btn-text-color':'#fca5a5'} as React.CSSProperties} onClick={() => {
+                    if (!window.confirm('Delete all session data? This cannot be undone.')) return;
+                    setTransfers([]); setUploadQueue([]); setPassword(''); localStorage.clear(); toast('All session data cleared', 'info');
                   }}>
                     <LogOut size={15} /> Clear all session data
                   </button>

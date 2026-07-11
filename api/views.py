@@ -614,6 +614,88 @@ def get_stats(request):
     return resp
 
 
+# ─── 6b. Library: clear all stored data ─────────────────────────────────────
+
+@csrf_exempt
+@require_http_methods(['POST', 'OPTIONS'])
+def clear_library(request):
+    """
+    POST /api/library/clear/
+
+    Permanently deletes every Transfer and its associated encrypted chunk files
+    from both the database and disk.  Returns a summary of what was removed so
+    the frontend can display a meaningful confirmation message.
+
+    Response (success):
+        {
+          "ok": true,
+          "deleted_transfers": 4,
+          "deleted_chunks":    11,
+          "freed_bytes":       7340032
+        }
+
+    Response (error):
+        { "ok": false, "error": "..." }
+
+    Design notes:
+    - We iterate transfers and call _cleanup_transfer() for each so that
+      FileField files on disk are explicitly removed.  Relying on CASCADE alone
+      only cleans the DB rows, leaving encrypted blobs on the filesystem.
+    - A try/except per transfer accumulates errors without aborting the entire
+      operation — partial-success is better than a total abort.
+    - CSRF-exempt consistent with all other API endpoints in this app.
+    """
+    if request.method == 'OPTIONS':
+        resp = HttpResponse(status=204)
+        resp['Access-Control-Allow-Origin'] = '*'
+        resp['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        resp['Access-Control-Allow-Headers'] = 'Content-Type'
+        return resp
+
+    deleted_transfers = 0
+    deleted_chunks    = 0
+    freed_bytes       = 0
+    errors: list      = []
+
+    try:
+        transfers = list(Transfer.objects.prefetch_related('chunks').all())
+    except Exception as e:
+        resp = JsonResponse({'ok': False, 'error': f'Database error: {e}'}, status=500)
+        resp['Access-Control-Allow-Origin'] = '*'
+        return resp
+
+    for transfer in transfers:
+        try:
+            # Tally chunk stats BEFORE deletion so we can report them
+            for chunk in transfer.chunks.all():
+                try:
+                    if chunk.data and chunk.data.name:
+                        path = chunk.data.path
+                        if os.path.isfile(path):
+                            freed_bytes += os.path.getsize(path)
+                except Exception:
+                    pass   # unreadable chunk meta — count it as deleted anyway
+                deleted_chunks += 1
+
+            # _cleanup_transfer handles disk file removal + DB deletion
+            _cleanup_transfer(transfer)
+            deleted_transfers += 1
+
+        except Exception as e:
+            # Non-fatal: log and continue so one bad transfer doesn't block rest
+            errors.append({'id': str(transfer.id), 'error': str(e)})
+
+    resp = JsonResponse({
+        'ok':                True,
+        'deleted_transfers': deleted_transfers,
+        'deleted_chunks':    deleted_chunks,
+        'freed_bytes':       freed_bytes,
+        'errors':            errors,
+    })
+    resp['Access-Control-Allow-Origin'] = '*'
+    return resp
+
+
 # ─── 7a. Dedicated LAN IP endpoint ───────────────────────────────────────────
 
 def get_lan_ip(request):

@@ -14,6 +14,7 @@ urlpatterns = [
 
     # Library stats
     path('stats/',                                           views.get_stats,        name='get_stats'),
+    path('library/clear/',                                   views.clear_library,    name='clear_library'),
     path('lan/ip/',                                          views.get_lan_ip,       name='get_lan_ip'),
 
 
