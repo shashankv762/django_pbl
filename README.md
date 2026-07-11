@@ -1,4 +1,4 @@
-﻿# Aegix Share
+# Aegix Share
 
 > Zero-knowledge, end-to-end encrypted file sharing over LAN, WebRTC P2P, and Web Bluetooth. No cloud. No accounts.
 
@@ -105,153 +105,111 @@ Export / import settings as JSON, clear transfer history, reset all settings to 
 
 | Problem | Fix |
 |---------|-----|
-| Phone gets "Connection refused" | Start Django with `0.0.0.0:8000`, not `8000` |
+| Phone gets "Connection refused" | Start Django with `0.0.0.0:8000` or `0.0.0.0:8443`, not `localhost` |
 | Phone page times out | Run `setup_firewall.bat` as Administrator |
 | QR shows `localhost` | Check `/api/lan/ip/` returns a real `192.168.x.x` address |
-| Mobile download does nothing | Ensure you have the latest build — `npm run build` (`@noble` fallback is included) |
+| Mobile says "File can't be downloaded securely" | Run the server in HTTPS mode (using `start_https.bat` or `python manage.py runssl`) and accept the self-signed certificate |
+| Mobile camera scanner doesn't open / permission denied | Camera API (`getUserMedia`) requires a secure context (HTTPS). Run the server in HTTPS mode |
 | Link unavailable | Link expired, hit download limit, or is malformed. Create a new one. |
 | Bluetooth greyed out | Requires `https://` or `http://localhost`. Not available on plain LAN IP. |
 
 ---
 
-## Step-by-Step: Full Setup and Run
+## Running the Project: HTTP vs HTTPS Modes
 
-Execute each command in order in a terminal (PowerShell on Windows, Bash on macOS/Linux).
+Aegix Share can be run in two network modes. **HTTPS mode is highly recommended** for cross-device LAN file sharing because modern mobile browsers enforce strict security constraints on file downloads and device APIs.
 
-### 1. Clone the repository
+### 1. HTTP Mode (Port 8000)
+- **Startup Script**: Double-click `start.bat`
+- **Manual Command**: `python manage.py runserver 0.0.0.0:8000`
+- **Use Case**: Quick local testing on the same PC.
+- **Limitation**: When accessing via a mobile device on LAN, mobile browsers will block file downloads due to insecure HTTP context, and the QR camera scanner will not open.
 
+### 2. HTTPS Mode (Port 8443) — RECOMMENDED
+- **Startup Script**: Double-click `start_https.bat`
+- **Manual Command**: `python manage.py runssl 0.0.0.0:8443`
+- **Use Case**: Secure cross-device sharing, mobile downloads, and mobile camera scanning.
+- **How it works**: The backend auto-generates a self-signed TLS certificate (`cert.pem` and `key.pem`) containing the server's LAN IP. The web app automatically detects this secure server and generates `https://` URLs for QR codes.
+
+---
+
+## Step-by-Step Guidance: Run and Access via LAN
+
+Follow these instructions to set up the project and share files securely with other devices on your local network (WiFi).
+
+### Step 1: Install Prerequisites
+Ensure you have the following installed:
+- [Python 3.10+ ](https://www.python.org/downloads/)
+- [Node.js 18+ ](https://nodejs.org/)
+
+### Step 2: Clone and Setup Virtual Environment
+Open a terminal in the project directory:
 ```powershell
-git clone https://github.com/shashankv762/django_pbl.git
-cd django_pbl
-```
-
-### 2. Create a Python virtual environment
-
-**Windows (PowerShell):**
-```powershell
+# Create Python virtual environment
 python -m venv .venv
+
+# Activate it (Windows PowerShell)
 .venv\Scripts\Activate.ps1
-```
 
-**Windows (Command Prompt):**
-```cmd
-python -m venv .venv
-call .venv\Scripts\activate.bat
-```
-
-**macOS / Linux:**
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Install Python dependencies
-
-```bash
-python -m pip install --upgrade pip
+# Install Python packages
 pip install -r requirements.txt
 ```
 
-### 4. Apply database migrations
+### Step 3: Install Frontend Dependencies & Build
+Compile the frontend static assets so they can be served by Django:
+```bash
+# Install Node modules
+npm install
 
+# Build production frontend assets
+npm run build
+
+# Collect static files into Django static directory
+python manage.py collectstatic --noinput --clear
+```
+
+### Step 4: Apply Database Migrations
+Initialize the SQLite database schema:
 ```bash
 python manage.py migrate
 ```
 
-### 5. Install Node.js packages
+### Step 5: Configure Firewall (Windows)
+To allow other devices (like your phone) to connect to your PC, open the inbound firewall ports:
+- Right-click `setup_firewall.bat` in the project root → **Run as administrator**.
+- Alternatively, run this in an elevated PowerShell:
+  ```powershell
+  netsh advfirewall firewall add rule name="Aegix HTTP 8000" protocol=TCP dir=in localport=8000 action=allow
+  netsh advfirewall firewall add rule name="Aegix HTTPS 8443" protocol=TCP dir=in localport=8443 action=allow
+  ```
 
-```bash
-npm install
-```
+### Step 6: Start the HTTPS Server
+Run the HTTPS startup script:
+- Double-click **`start_https.bat`** (or run `python manage.py runssl 0.0.0.0:8443` in your terminal).
+- This will print your access URLs:
+  - **Local**: `https://localhost:8443`
+  - **LAN**: `https://192.168.x.x:8443`
 
-### 6. Build the frontend
+### Step 7: Connect Mobile Devices via LAN
+1. On your phone, connect to the **same WiFi network** as your PC.
+2. Open your phone's browser and go to your PC's LAN URL (e.g. `https://192.168.1.50:8443`).
+3. **Important (One-time bypass)**: Because the server uses a self-signed developer certificate, your browser will display a security warning:
+   - **Chrome / Android**: Tap **Advanced** → **Proceed to <ip_address> (unsafe)**.
+   - **Safari / iOS**: Tap **Show Details** → **Visit this website** → Confirm with your passcode/FaceID.
+4. The Aegix Share interface will load. Both file downloads and the QR camera scanner are now fully authorized to work.
 
-```bash
-npm run build
-```
-
-> This compiles the React app into `dist/` which Django serves directly. Required for LAN sharing.
-
-### 7. Open the firewall on Windows (one-time, run as Administrator)
-
-**Option A — provided script:**
-Right-click `setup_firewall.bat` in the project root → **Run as administrator**.
-
-**Option B — PowerShell (elevated):**
-```powershell
-netsh advfirewall firewall add rule name="Aegix Port 8000" protocol=TCP dir=in localport=8000 action=allow
-```
-
-### 8. Find your LAN IP address
-
-**Windows:**
-```powershell
-(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like "192.168.*" }).IPAddress
-```
-
-**macOS / Linux:**
-```bash
-ip route get 1 | awk '{print $7; exit}'
-```
-
-Note this address — e.g. `192.168.1.42`. Other devices on your network will use it.
-
-### 9. Start the Django server
-
-```bash
-python manage.py runserver 0.0.0.0:8000
-```
-
-The server binds to all network interfaces so any device on the same WiFi can reach it.
-
-### 10. Verify LAN IP detection
-
-```powershell
-Invoke-RestMethod http://localhost:8000/api/lan/ip/
-```
-
-The `best` field must show your real LAN IP, not `127.0.0.1`.
-
-### 11. Send a file to another device
-
-1. On the PC, open `http://localhost:8000`
-2. Go to **Nearby → LAN / QR Share**
-3. Select a file and click **Send files**
-4. A QR code appears containing `http://<LAN-IP>:8000/#/download?id=...&key=...`
-5. Scan the QR with the phone camera
-6. Tap **Decrypt & Download** on the phone
-7. Tap the green **Save File** button when decryption completes
-
-### 12. Use WebRTC P2P (no server storage)
-
-1. Open `http://localhost:8000` on the sender
-2. Go to **Nearby → WiFi / P2P**
-3. Select files and click **Start P2P Send**
-4. Share the link or QR with the receiver
-5. Receiver opens the link — direct WebRTC connection is established
-6. Files stream encrypted, peer-to-peer
-
-### 13. Use Web Bluetooth (same PC only, requires localhost)
-
-> Requires Chrome or Edge. Must be on `http://localhost:8000` — not the LAN IP.
-
-1. Go to **Nearby → Bluetooth LE**
-2. Click **Scan** — OS Bluetooth picker appears
-3. Select a paired BLE device
-4. If the device exposes the Aegix GATT service, the download URL is written directly to it
-
-### 14. Configure settings
-
-Open the **Settings** tab (gear icon) to:
-- Change the default chunk size, expiry, and download limits
-- Switch accent color, display density, or enable reduced motion
-- Toggle toast notifications and sound effects
-- Export or import your settings as JSON
-- View the active crypto engine (Web Crypto or `@noble` fallback)
+### Step 8: Share a File
+1. On your PC, open `https://localhost:8443` (or `https://192.168.x.x:8443`).
+2. Select a file to upload in the **Send** tab.
+3. Once ready, click the **LAN QR** button or look at the auto-generated QR code.
+4. On your mobile, tap **Open camera scanner** in the Receive tab (or use the system camera) and scan the QR code.
+5. The mobile browser will open the decryption link, download the chunks securely, and decrypt the file.
 
 ---
 
-## Development Mode (hot reload)
+## Development Mode (Hot Reload)
+
+To make changes to the code with instant browser reloading:
 
 ```powershell
 # Terminal 1 — Django backend
@@ -262,10 +220,9 @@ npm run dev
 ```
 
 Open `http://localhost:5173`.  
-**Note:** LAN/QR sharing requires the production build (`npm run build`). The Vite dev server is not reachable from other devices.
+*Note: Vite dev server does not support SSL out of the box and is not reachable from other network devices. Use `npm run build` for testing LAN transfers.*
 
 ---
 
 ## License
-
 MIT — see [LICENSE](LICENSE) for details.
